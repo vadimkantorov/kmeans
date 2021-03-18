@@ -1,6 +1,6 @@
 # WIP
 
-Will host implementations of K-Means initialization schemes:
+Will host PyTorch implementations of K-Means initialization schemes:
 - k-means++ - based on https://github.com/scikit-learn/scikit-learn/blob/main/sklearn/cluster/_kmeans.py#L144
 - k-means|| - based on  https://github.com/zxytim/kmeansII/blob/master/src/kmeansII.cc, https://github.com/jtappler/ScalableKMeansPlusPlus and https://nbviewer.jupyter.org/github/jtappler/ScalableKMeansPlusPlus/blob/master/ScalableKMeansPlusPlus.ipynb
 - kmc2 - based on https://github.com/obachem/kmc2/blob/master/kmc2.pyx
