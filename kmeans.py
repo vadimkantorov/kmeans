@@ -11,10 +11,10 @@ def kmeans(X : 'BCT', K = 5, num_iter = 10, init = 'random', generator = None) -
         Z, C = kmeans_plusplus(X, K = K, generator = generator)
 
     for i in range(num_iter):
-        D = cdist_squared(A, C);
+        D = cdist_squared(X, C);
         Z = D.argmin(dim = -1)
         bincount = Z.new_zeros(len(Z), K).scatter_add_(-1, Z, torch.ones_like(Z)).unsqueeze(1)
-        C.zero_().scatter_add_(-1, Z.unsqueeze(1).expand(-1, X.shape[1], -1), A).div_(bincount.clamp(min = 1))
+        C.zero_().scatter_add_(-1, Z.unsqueeze(1).expand(-1, X.shape[1], -1), X).div_(bincount.clamp(min = 1))
     
     return Z, C
 
