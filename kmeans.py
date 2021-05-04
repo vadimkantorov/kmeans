@@ -5,7 +5,7 @@ import torch
 def kmeans(X : 'BCT', K = 5, num_iter = 10, init = 'random', generator = None) -> '(BT, BCK)':
     if torch.is_tensor(init):
         C = init
-    elif init == 'random':
+    elif init is None or init == 'random':
         C = X.gather(-1, torch.rand(X.shape[0], X.shape[-1], device = X.device, generator = generator).argsort(-1).narrow(-1, 0, K).unsqueeze(1).expand(-1, X.shape[1], -1))
     elif init == 'k-means++':
         Z, C = kmeans_plusplus(X, K = K, generator = generator)
