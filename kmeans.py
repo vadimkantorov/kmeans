@@ -6,19 +6,21 @@ def kmeans2d(X : 'BCHW', K = 12, num_iter = 10, init = 'random', generator = Non
     assert X.is_floating_point()
 
     X_shape = X.shape
-    posenc = torch.stack(torch.meshgrid(torch.arange(X.shape[-2], dtype = torch.float32) / X.shape[-2], torch.arange(X.shape[-1], dtype = torch.float32) / X.shape[-1], indexing = 'ij'), dim = -3)
+    posenc = torch.stack(torch.meshgrid(torch.arange(X.shape[-2], dtype = torch.float32), torch.arange(X.shape[-1], dtype = torch.float32), indexing = 'ij'), dim = -3)
     X = torch.cat([posenc.unsqueeze(0).expand(X.shape[0], -1, -1, -1), X], dim = -3).flatten(start_dim = -2)
         
     assert posenc.shape[-3] == posencdim
     assert init == 'random'
     I, C = torch.randint(0, K, (X.shape[0], X.shape[-1]), device = X.device, dtype = torch.int64, generator = generator), X.gather(-1, torch.rand(X.shape[0], X.shape[-1], device = X.device, generator = generator).argsort(-1).narrow(-1, 0, K).unsqueeze(1).expand(-1, X.shape[1], -1))
+    M = torch.zeros(X.shape[0], X.shape[-1], C.shape[-1], device = X.device, dtype = torch.bool)
     
     J = F.unfold(torch.arange(X.shape[-1], device = X.device).view(X_shape[-2:]).view(torch.float64)[None, None, :, :], kernel_size = 2 * radius + 1, padding = radius).view(torch.int64).expand(X.shape[0], -1, -1).transpose(-1, -2) if mask == 'rep' else None
+    
     for i in range(num_iter):
         if mask == 'bil':
-            M = cdist_squared(X[:, :posencdim], C[:, :posencdim]) < radius * radius
+            torch.lt(cdist_squared(X[:, :posencdim], C[:, :posencdim]), radius * radius, out = M)
         elif mask == 'rep':
-            M = torch.zeros(X.shape[0], X.shape[-1], C.shape[-1], device = X.device, dtype = torch.bool).scatter_(-1, I.unsqueeze(-1).expand(-1, -1, (2 * radius + 1) ** 2).gather(-2, J), True)
+            M.zero_().scatter_(-1, I.unsqueeze(-1).expand(-1, -1, (2 * radius + 1) ** 2).gather(-2, J), True)
             
         D = torch.where(M, cdist_squared(X[:, posencdim:], C[:, posencdim:]), float('inf'))
 
@@ -79,16 +81,14 @@ def kmeans_plusplus(X : 'BCT', K, num_iter = None, generator = None) -> '(BT, BC
 
     return I, C
 
-def cdist_squared(A : 'BCT', B : 'BCK') -> 'BTK':
+def cdist_squared(A : 'BCT', B : 'BCK', out = None) -> 'BTK':
     normAsq = A.pow(2).sum(dim = 1, keepdim = True)
     normBsq = B.pow(2).sum(dim = 1, keepdim = True)
-    res = torch.baddbmm(normBsq, A.transpose(-2, -1), B, alpha = -2).add_(normAsq.transpose(-2, -1))
-    return res.clamp_(min = 0)
+    return torch.baddbmm(normBsq, A.transpose(-2, -1), B, alpha = -2, out = out).add_(normAsq.transpose(-2, -1)).clamp_(min = 0)
 
-def pdist_squared(A : 'BCT') -> 'BTT':
+def pdist_squared(A : 'BCT', out = None) -> 'BTT':
     normAsq = A.pow(2).sum(dim = 1, keepdim = True)
-    res = torch.baddbmm(normAsq, A.transpose(-2, -1), A, alpha = -2).add_(normAsq.transpose(-2, -1))
-    return res.clamp_(min = 0)
+    return torch.baddbmm(normAsq, A.transpose(-2, -1), A, alpha = -2, out = out).add_(normAsq.transpose(-2, -1)).clamp_(min = 0)
 
 def remap_unique(X):
     return torch.stack([t.unique(return_inverse = True)[-1] for t in X.flatten(start_dim = 1)]).unflatten(-1, X.shape[1:])
