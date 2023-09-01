@@ -11,24 +11,34 @@ def kmeans2d(X : 'BCHW', K = 12, num_iter = 10, init = 'random', generator = Non
         
     assert posenc.shape[-3] == posencdim
     assert init == 'random'
-    I, C = torch.randint(0, K, (X.shape[0], X.shape[-1]), device = X.device, dtype = torch.int64, generator = generator), X.gather(-1, torch.rand(X.shape[0], X.shape[-1], device = X.device, generator = generator).argsort(-1).narrow(-1, 0, K).unsqueeze(1).expand(-1, X.shape[1], -1))
-    M = torch.zeros(X.shape[0], X.shape[-1], C.shape[-1], device = X.device, dtype = torch.bool)
+    #I, C = torch.randint(0, K, (X.shape[0], X.shape[-1]), device = X.device, dtype = torch.int64, generator = generator), X.gather(-1, torch.rand(X.shape[0], X.shape[-1], device = X.device, generator = generator).argsort(-1).narrow(-1, 0, K).unsqueeze(1).expand(-1, X.shape[1], -1))
     
+    I, C = torch.randperm(X.shape[-1], device = X.device).unsqueeze(0), X.gather(-1, torch.rand(X.shape[0], X.shape[-1], device = X.device, generator = generator).argsort(-1).narrow(-1, 0, K).unsqueeze(1).expand(-1, X.shape[1], -1))
+    
+    M = torch.zeros(X.shape[0], X.shape[-1], C.shape[-1], device = X.device, dtype = torch.bool)
     J = F.unfold(torch.arange(X.shape[-1], device = X.device).view(X_shape[-2:]).view(torch.float64)[None, None, :, :], kernel_size = 2 * radius + 1, padding = radius).view(torch.int64).expand(X.shape[0], -1, -1).transpose(-1, -2) if mask == 'rep' else None
     
+    history = []
     for i in range(num_iter):
         if mask == 'bil':
-            torch.lt(cdist_squared(X[:, :posencdim], C[:, :posencdim]), radius * radius, out = M)
-        elif mask == 'rep':
-            M.zero_().scatter_(-1, I.unsqueeze(-1).expand(-1, -1, (2 * radius + 1) ** 2).gather(-2, J), True)
+            M = torch.lt(cdist_squared(X[:, :posencdim], C[:, :posencdim]), radius * radius, out = M)
             
-        D = torch.where(M, cdist_squared(X[:, posencdim:], C[:, posencdim:]), float('inf'))
-
-        I = D.argmin(dim = -1)
+            D = torch.where(M, cdist_squared(X[:, posencdim:], C[:, posencdim:]), float('inf'))
+            I = D.argmin(dim = -1)
+        
+        elif mask == 'rep':
+            JJ = I.unsqueeze(-1).expand(-1, -1, (2 * radius + 1) ** 2).gather(-2, J)
+            #CC = C.transpose(-1, -2).gather(-2, JJ.flatten(start_dim = -2).unsqueeze(-1).expand(-1, -1, C.shape[-2])).unflatten(-2, JJ.shape[-2:])
+            #I = JJ.gather(-1, (CC * X.transpose(-1, -2).unsqueeze(-2)).sum(dim = -1).argmax(dim = -1, keepdim = True)).squeeze(-1)
+            M.zero_().scatter_(-1, JJ, True)
+            D = torch.where(M, cdist_squared(X[:, posencdim:], C[:, posencdim:]), float('inf'))
+            I = D.argmin(dim = -1)
+        
         bincount = torch.zeros((len(I), K), dtype = I.dtype, device = I.device).scatter_add_(-1, I, torch.ones_like(I)).unsqueeze(1)
         C.zero_().scatter_add_(-1, I.unsqueeze(1).expand(-1, X.shape[1], -1), X).div_(bincount.clamp_(min = 1))
+        history.append((I.unflatten(-1, X_shape[-2:]).clone(), C[:, posencdim:].clone(), C[:, :posencdim].clone()))
     
-    return I.unflatten(-1, X_shape[-2:]), C[:, posencdim:]
+    return I.unflatten(-1, X_shape[-2:]), C[:, posencdim:], C[:, :posencdim], history
 
         
 
